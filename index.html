@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Vocabulary Garden v5.7 - Cross-Platform Optimized</title>
+    
+    <!-- Meta tags cho PWA (Web App) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#10b981">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-8px); }
+            75% { transform: translateX(8px); }
+        }
+        .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        body {
+            overscroll-behavior-y: contain; /* Chống kéo để load lại trang trên mobile */
+            -webkit-tap-highlight-color: transparent; /* Xóa màu xanh khi chạm trên iOS */
+            user-select: none; /* Tránh chọn văn bản nhầm khi bấm nút nhanh */
+        }
+        
+        input { user-select: text; } /* Cho phép chọn văn bản trong ô nhập */
+        
+        .icon-container svg { display: block; }
+        
+        /* Tối ưu hóa vùng an toàn (Safe Areas) cho điện thoại */
+        @supports (padding: env(safe-area-inset-top)) {
+            header { padding-top: calc(1rem + env(safe-area-inset-top)); }
+            nav { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
+            .main-content { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Cải thiện hiển thị Heatmap trên màn hình cực nhỏ */
+        .heatmap-container {
+            mask-image: linear-gradient(to right, black 90%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+        // Thành phần Icon ổn định cho CDN
+        const Icon = ({ name, size = 24, className = "", strokeWidth = 2 }) => {
+            const containerRef = useRef(null);
+            useEffect(() => {
+                if (containerRef.current && window.lucide) {
+                    const iconName = name.replace(/([A-Z])/g, "-$1").toLowerCase().replace(/^-/, "");
+                    containerRef.current.innerHTML = `<i data-lucide="${iconName}"></i>`;
+                    window.lucide.createIcons({
+                        attrs: { width: size, height: size, class: className, 'stroke-width': strokeWidth },
+                        nameAttr: 'data-lucide',
+                        root: containerRef.current
+                    });
+                }
+            }, [name, size, className, strokeWidth]);
+            return <span ref={containerRef} className="icon-container inline-flex items-center justify-center"></span>;
+        };
+
+        const playFeedbackSound = (isCorrect) => {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                if (isCorrect) {
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(523, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0, ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+                } else {
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, ctx.currentTime);
+                    gain.gain.setValueAtTime(0, ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+                }
+                osc.start(); osc.stop(ctx.currentTime + 0.3);
+            } catch (e) {}
+        };
+
+        const SRS_INTERVALS = [1, 3, 7, 15, 30, 60, 180, 365];
+        const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+
+        const ContributionGraph = ({ history }) => {
+            const weeksToShow = 12;
+            const days = [];
+            const today = new Date();
+            const startDate = new Date();
+            startDate.setDate(today.getDate() - (weeksToShow * 7) + (6 - today.getDay()));
+            
+            for (let i = 0; i < weeksToShow * 7; i++) {
+                const d = new Date(startDate);
+                d.setDate(startDate.getDate() + i);
+                const dateStr = d.toISOString().split('T')[0];
+                days.push({ date: dateStr, count: history[dateStr] || 0 });
+            }
+
+            const getColor = (count) => {
+                if (count === 0) return 'bg-slate-100';
+                if (count <= 1) return 'bg-emerald-200';
+                if (count <= 3) return 'bg-emerald-400';
+                if (count <= 5) return 'bg-emerald-600';
+                return 'bg-emerald-800';
+            };
+
+            return (
+                <div className="bg-white p-4 md:p-5 rounded-[2rem] shadow-sm border border-slate-100 overflow-visible">
+                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-xs md:text-sm">
+                        <Icon name="Target" size={14} className="text-emerald-600" />
+                        Nhật ký hoàn thành phiên học
+                    </h3>
+                    <div className="flex justify-center overflow-x-auto pb-2 no-scrollbar heatmap-container">
+                        <div className="grid grid-flow-col grid-rows-7 gap-1">
+                            {days.map((day, idx) => (
+                                <div key={idx} className={`w-3 h-3 md:w-4 md:h-4 rounded-sm heatmap-cell relative ${getColor(day.count)} transition-colors cursor-pointer`} title={`${day.date}: ${day.count} phiên`}></div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-end gap-1 text-[9px] text-slate-400 font-bold uppercase">
+                        <span>Ít học</span>
+                        {[0, 1, 3, 5, 10].map(v => <div key={v} className={`w-2.5 h-2.5 rounded-sm ${getColor(v)}`}></div>)}
+                        <span>Chăm chỉ</span>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [vocabList, setVocabList] = useState([]);
+            const [practiceHistory, setPracticeHistory] = useState({});
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isReviewing, setIsReviewing] = useState(false);
+            const [isFreePractice, setIsFreePractice] = useState(false);
+            const [isLearning, setIsLearning] = useState(false);
+            const [currentWordIndex, setCurrentWordIndex] = useState(0);
+            const [userAnswer, setUserAnswer] = useState('');
+            const [hasChecked, setHasChecked] = useState(false);
+            const [isCorrectFeedback, setIsCorrectFeedback] = useState(false);
+            const [isCheckingWithAI, setIsCheckingWithAI] = useState(false);
+            const [shake, setShake] = useState(false);
+            
+            const [newTerm, setNewTerm] = useState('');
+            const [newIpa, setNewIpa] = useState('');
+            const [newDef, setNewDef] = useState('');
+            const [warehouseError, setWarehouseError] = useState('');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterStatus, setFilterStatus] = useState('all');
+            const [deleteTarget, setDeleteTarget] = useState(null);
+
+            const termInputRef = useRef(null);
+            const ipaInputRef = useRef(null);
+            const defInputRef = useRef(null);
+
+            useEffect(() => {
+                const savedData = localStorage.getItem('vocab_garden_data');
+                const savedHistory = localStorage.getItem('vocab_garden_history');
+                if (savedData) try { setVocabList(JSON.parse(savedData)); } catch (e) {}
+                if (savedHistory) try { setPracticeHistory(JSON.parse(savedHistory)); } catch (e) {}
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('vocab_garden_data', JSON.stringify(vocabList));
+                localStorage.setItem('vocab_garden_history', JSON.stringify(practiceHistory));
+            }, [vocabList, practiceHistory]);
+
+            const logSessionCompletion = useCallback(() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                setPracticeHistory(prev => ({ ...prev, [todayStr]: (prev[todayStr] || 0) + 1 }));
+            }, []);
+
+            // Xuất dữ liệu để chuyển sang thiết bị khác
+            const exportData = () => {
+                const data = { vocabList, practiceHistory };
+                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `vocab_garden_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            };
+
+            // Nhập dữ liệu từ thiết bị khác
+            const importData = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        if (data.vocabList && confirm("Việc này sẽ thay thế kho từ hiện tại. Tiếp tục?")) {
+                            setVocabList(data.vocabList);
+                            if (data.practiceHistory) setPracticeHistory(data.practiceHistory);
+                        }
+                    } catch (e) { alert("Tệp không hợp lệ!"); }
+                };
+                reader.readAsText(file);
+            };
+
+            const normalizeLocal = (str) => {
+                return str.toLowerCase().trim().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g,"").replace(/\s{2,}/g," ").replace(/i/g, "y");
+            };
+
+            const checkAnswerWithAI = async (userAns, correctAns, term) => {
+                const apiKey = ""; 
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                const systemPrompt = `English Tutor. Term: "${term}". Sample: "${correctAns}". Check if user input is correct meaning. Accept synonyms/typos/iy variants. JSON: {"isCorrect": boolean}`;
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: userAns }] }],
+                            systemInstruction: { parts: [{ text: systemPrompt }] },
+                            generationConfig: { responseMimeType: "application/json" }
+                        })
+                    });
+                    const result = await response.json();
+                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    return JSON.parse(text).isCorrect;
+                } catch (e) { return false; }
+            };
+
+            const today = new Date().setHours(0, 0, 0, 0);
+            const reviewQueue = useMemo(() => vocabList.filter(w => w.status === 'learning' && new Date(w.nextReviewDate).getTime() <= today), [vocabList, today]);
+            const learningQueue = useMemo(() => vocabList.filter(w => w.status === 'learning'), [vocabList]);
+            const activeReviewQueue = isFreePractice ? learningQueue : reviewQueue;
+            const seedQueue = useMemo(() => vocabList.filter(w => w.status === 'queue'), [vocabList]);
+            
+            const stats = useMemo(() => ({
+                total: vocabList.length,
+                seeds: seedQueue.length,
+                reviewing: reviewQueue.length,
+                mastered: vocabList.filter(w => w.status === 'mastered').length,
+                learning: vocabList.filter(w => w.status === 'learning').length,
+            }), [vocabList, seedQueue, reviewQueue]);
+
+            const getPlantIcon = (word) => {
+                if (word.status === 'queue') return '🌑';
+                if (new Date(word.nextReviewDate).getTime() <= today && word.status !== 'mastered') return '🥀';
+                if (word.status === 'mastered' || word.streak >= 7) return '🌲';
+                if (word.streak >= 4) return '🌳';
+                if (word.streak >= 1) return '🌿';
+                return '🌱';
+            };
+
+            const filteredWarehouse = useMemo(() => {
+                return vocabList.filter(word => {
+                    const matchesSearch = word.term.toLowerCase().includes(searchTerm.toLowerCase()) || word.definition.toLowerCase().includes(searchTerm.toLowerCase());
+                    const matchesFilter = filterStatus === 'all' || word.status === filterStatus;
+                    return matchesSearch && matchesFilter;
+                }).reverse();
+            }, [vocabList, searchTerm, filterStatus]);
+
+            const addNewWord = (e) => {
+                e.preventDefault();
+                const term = newTerm.trim();
+                const def = newDef.trim();
+                if (!term || !def) return;
+                if (vocabList.some(w => w.term.toLowerCase() === term.toLowerCase())) {
+                    setWarehouseError(`Từ "${term}" đã có trong kho!`);
+                    setShake(true);
+                    setTimeout(() => { setShake(false); setWarehouseError(''); }, 3000);
+                    return;
+                }
+                const newWord = {
+                    id: generateId(), term, ipa: newIpa.trim(), definition: def,
+                    dateAdded: new Date().toISOString(), nextReviewDate: new Date().toISOString(),
+                    streak: 0, status: 'queue'
+                };
+                setVocabList(prev => [...prev, newWord]);
+                setNewTerm(''); setNewIpa(''); setNewDef('');
+                if (termInputRef.current) termInputRef.current.focus();
+            };
+
+            const checkAnswer = useCallback(async () => {
+                if (isCheckingWithAI || hasChecked) return;
+                const currentWord = activeReviewQueue[currentWordIndex];
+                if (!currentWord) return;
+
+                const userNorm = normalizeLocal(userAnswer);
+                const correctList = currentWord.definition.split(/[,;]/).map(s => normalizeLocal(s));
+
+                if (correctList.some(correctNorm => userNorm === correctNorm)) {
+                    setIsCorrectFeedback(true);
+                    setHasChecked(true);
+                    playFeedbackSound(true);
+                    return;
+                }
+
+                setIsCheckingWithAI(true);
+                const isCorrect = await checkAnswerWithAI(userAnswer, currentWord.definition, currentWord.term);
+                if (!isCorrect) { setShake(true); setTimeout(() => setShake(false), 500); }
+                setIsCorrectFeedback(isCorrect);
+                setHasChecked(true);
+                setIsCheckingWithAI(false);
+                playFeedbackSound(isCorrect);
+            }, [activeReviewQueue, currentWordIndex, userAnswer, isCheckingWithAI, hasChecked]);
+
+            const handleNextReview = useCallback(() => {
+                if (!hasChecked) return;
+                const currentWord = activeReviewQueue[currentWordIndex];
+                if (!currentWord) return;
+
+                setVocabList(prev => prev.map(word => {
+                    if (word.id === currentWord.id) {
+                        let newStreak = isCorrectFeedback ? word.streak + 1 : 0;
+                        let daysToAdd = isCorrectFeedback ? (SRS_INTERVALS[newStreak] || 365) : 1;
+                        const nextDate = new Date(); nextDate.setDate(nextDate.getDate() + daysToAdd);
+                        nextDate.setHours(0, 0, 0, 0);
+                        return { ...word, streak: newStreak, nextReviewDate: nextDate.toISOString(), status: newStreak >= 7 ? 'mastered' : 'learning' };
+                    }
+                    return word;
+                }));
+
+                if (currentWordIndex < activeReviewQueue.length - 1) {
+                    setCurrentWordIndex(prev => prev + 1); setHasChecked(false); setUserAnswer('');
+                } else {
+                    logSessionCompletion();
+                    setIsReviewing(false); setIsFreePractice(false); setCurrentWordIndex(0); setHasChecked(false); setUserAnswer(''); setActiveTab('dashboard');
+                }
+            }, [activeReviewQueue, currentWordIndex, isCorrectFeedback, hasChecked, logSessionCompletion]);
+
+            const handleNextLearnWord = useCallback(() => {
+                const wordsToLearn = seedQueue.slice(0, 5);
+                if (currentWordIndex === wordsToLearn.length - 1) {
+                    setVocabList(prev => prev.map(word => {
+                        if (wordsToLearn.some(w => w.id === word.id)) return { ...word, status: 'learning', nextReviewDate: new Date(Date.now() + 86400000).toISOString(), streak: 0 };
+                        return word;
+                    }));
+                    setIsLearning(false); setCurrentWordIndex(0);
+                } else { setCurrentWordIndex(prev => prev + 1); }
+            }, [currentWordIndex, seedQueue]);
+
+            const handleWarehouseKeyDown = (e, field) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                    if (field === 'term' && ipaInputRef.current) { e.preventDefault(); ipaInputRef.current.focus(); }
+                    else if (field === 'ipa' && defInputRef.current) { e.preventDefault(); defInputRef.current.focus(); }
+                }
+                else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                    if (field === 'ipa' && termInputRef.current) { e.preventDefault(); termInputRef.current.focus(); }
+                    else if (field === 'def' && ipaInputRef.current) { e.preventDefault(); ipaInputRef.current.focus(); }
+                }
+            };
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (e.key === 'Enter') {
+                        if (isReviewing) {
+                            e.preventDefault();
+                            if (!hasChecked) { if (!isCheckingWithAI && userAnswer.trim()) checkAnswer(); }
+                            else { handleNextReview(); }
+                        } else if (isLearning) { e.preventDefault(); handleNextLearnWord(); }
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [isReviewing, hasChecked, isLearning, userAnswer, isCheckingWithAI, checkAnswer, handleNextReview, handleNextLearnWord]);
+
+            return (
+                <div className="min-h-screen bg-slate-50 font-sans pb-24 flex flex-col overflow-x-hidden">
+                    {/* Header cố định */}
+                    <header className="bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm px-6 py-4">
+                        <div className="max-w-2xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-100">
+                                    <Icon name="Sprout" className="text-white w-6 h-6" strokeWidth={2.5} />
+                                </div>
+                                <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Vocabulary Garden</h1>
+                            </div>
+                            <div className="flex gap-2">
+                                <label className="cursor-pointer p-2 text-slate-400 hover:text-emerald-500" title="Nhập dữ liệu">
+                                    <Icon name="UploadCloud" size={20} />
+                                    <input type="file" className="hidden" accept=".json" onChange={importData} />
+                                </label>
+                                <button onClick={exportData} className="p-2 text-slate-400 hover:text-emerald-500" title="Sao lưu dữ liệu">
+                                    <Icon name="DownloadCloud" size={20} />
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-2xl mx-auto w-full p-4 md:p-6 flex-grow main-content">
+                        {activeTab === 'dashboard' ? (
+                            <div className="space-y-6 animate-in fade-in duration-500">
+                                <ContributionGraph history={practiceHistory} />
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {[{l:'Cần tưới', v:stats.reviewing, c:'amber-600'}, {l:'Chờ gieo', v:stats.seeds, c:'emerald-600'}, {l:'Đang lớn', v:stats.learning, c:'blue-600'}, {l:'Cổ thụ', v:stats.mastered, c:'indigo-600'}].map(s => (
+                                        <div key={s.l} className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                                            <p className="text-[10px] md:text-xs text-slate-500 uppercase font-bold mb-1">{s.l}</p>
+                                            <p className={`text-xl md:text-2xl font-black ${s.c}`}>{s.v}</p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex flex-col md:flex-row gap-3">
+                                        <button onClick={() => { setIsReviewing(true); setIsFreePractice(false); setCurrentWordIndex(0); setUserAnswer(''); setHasChecked(false); }} 
+                                            disabled={reviewQueue.length === 0}
+                                            className={`flex-1 p-6 rounded-3xl flex items-center justify-between transition-all ${reviewQueue.length > 0 ? 'bg-amber-500 text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                                            <div className="text-left"><h3 className="text-lg font-bold">Tưới nước</h3><p className="text-xs opacity-90 italic">Review ngay mục tiêu héo</p></div>
+                                            <Icon name="Droplets" size={40} />
+                                        </button>
+                                        <button onClick={() => { if(reviewQueue.length > 0) alert('Hãy ưu tiên tưới nước trước nhé!'); else {setIsLearning(true); setCurrentWordIndex(0);} }} 
+                                            disabled={seedQueue.length === 0}
+                                            className={`flex-1 p-6 rounded-3xl flex items-center justify-between transition-all ${seedQueue.length > 0 && reviewQueue.length === 0 ? 'bg-emerald-500 text-white shadow-lg active:scale-95' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                                            <div className="text-left"><h3 className="text-lg font-bold">Gieo hạt</h3><p className="text-xs opacity-90 italic">Học thêm 5 hạt giống</p></div>
+                                            <Icon name="Sprout" size={40} />
+                                        </button>
+                                    </div>
+                                    <button onClick={() => { setIsReviewing(true); setIsFreePractice(true); setCurrentWordIndex(0); setUserAnswer(''); setHasChecked(false); }} 
+                                        disabled={learningQueue.length === 0}
+                                        className={`w-full p-5 rounded-3xl flex items-center justify-center gap-3 transition-all ${learningQueue.length > 0 ? 'bg-blue-500 text-white shadow-md active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                                        <Icon name="Zap" size={18} /> <span className="font-bold uppercase tracking-wide text-sm">Luyện tập tự do ({learningQueue.length})</span>
+                                    </button>
+                                </div>
+
+                                <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="LayoutDashboard" size={18} className="text-emerald-600" /> Khu vườn của bạn</h3>
+                                    {vocabList.length === 0 ? <div className="py-12 text-center text-slate-300 italic text-sm">Chưa có cây nào trong vườn.</div> :
+                                    <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2">
+                                        {vocabList.map(word => (
+                                            <div key={word.id} className="aspect-square flex items-center justify-center text-xl bg-slate-50 rounded-xl border border-slate-100" title={`${word.term}: ${word.definition}`}>
+                                                {getPlantIcon(word)}
+                                            </div>
+                                        ))}
+                                    </div>}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="warehouse-container animate-in slide-in-from-bottom-4">
+                                {/* Form thêm mới */}
+                                <div className={`bg-white p-5 rounded-3xl shadow-sm border border-slate-100 transition-all ${shake ? 'animate-shake border-red-300 bg-red-50' : ''}`}>
+                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="PlusCircle" size={18} className="text-emerald-600" /> Thêm hạt mới</h3>
+                                    <form onSubmit={addNewWord} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <input ref={termInputRef} type="text" value={newTerm} onChange={e => {setNewTerm(e.target.value); setWarehouseError('');}} onKeyDown={e => handleWarehouseKeyDown(e, 'term')} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" placeholder="English..." />
+                                                {warehouseError && <p className="text-[10px] text-red-500 font-bold ml-2 italic">{warehouseError}</p>}
+                                            </div>
+                                            <input ref={ipaInputRef} type="text" value={newIpa} onChange={e => setNewIpa(e.target.value)} onKeyDown={e => handleWarehouseKeyDown(e, 'ipa')} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-emerald-600 text-sm" placeholder="IPA..." />
+                                        </div>
+                                        <input ref={defInputRef} type="text" value={newDef} onChange={e => setNewDef(e.target.value)} onKeyDown={e => handleWarehouseKeyDown(e, 'def')} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" placeholder="Vietnamese meaning..." />
+                                        <button type="submit" className="w-full bg-slate-800 text-white p-5 rounded-2xl font-bold active:scale-95 transition-all shadow-lg hover:bg-black uppercase tracking-wide text-sm">Lưu vào kho</button>
+                                    </form>
+                                </div>
+
+                                {/* Quản lý danh sách */}
+                                <div className="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[400px] max-h-[50vh] md:max-h-[600px]">
+                                    <div className="flex-none">
+                                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="Search" size={18} className="text-emerald-600" /> Quản lý hạt giống</h3>
+                                        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 no-scrollbar">
+                                            {[{id:'all',l:'Tất cả'},{id:'queue',l:'Chờ gieo'},{id:'learning',l:'Đang học'},{id:'mastered',l:'Cổ thụ'}].map(f => (
+                                                <button key={f.id} onClick={() => setFilterStatus(f.id)} className={`px-4 py-2 rounded-full text-[10px] font-bold whitespace-nowrap transition-all ${filterStatus === f.id ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-500'}`}>{f.l}</button>
+                                            ))}
+                                        </div>
+                                        <div className="relative mb-4">
+                                            <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-medium" placeholder="Tìm kiếm từ vựng..." />
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="Search" size={16} /></div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 overflow-y-auto pr-1 flex-grow">
+                                        {filteredWarehouse.map(word => (
+                                            <div key={word.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-xl">{getPlantIcon(word)}</span>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-bold text-sm">{word.term}</p>
+                                                            {word.ipa && <p className="text-[10px] text-emerald-500 font-mono italic">/{word.ipa}/</p>}
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 font-medium truncate max-w-[150px] md:max-w-[300px]">{word.definition}</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => setDeleteTarget(word)} className="p-2.5 text-slate-300 active:text-red-500 bg-white rounded-xl shadow-sm border border-slate-100"><Icon name="Trash2" size={16} /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* MODAL XÓA (MOBILE READY) */}
+                    {deleteTarget && (
+                        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-6 z-[100] backdrop-blur-sm animate-in fade-in duration-200">
+                            <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl text-center space-y-6 animate-in zoom-in-95">
+                                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center mx-auto"><Icon name="Trash2" size={32} /></div>
+                                <div><h4 className="font-black text-xl">Xóa từ vựng?</h4><p className="text-sm text-slate-500 mt-2">Dữ liệu về <b>"{deleteTarget.term}"</b> sẽ mất vĩnh viễn.</p></div>
+                                <div className="flex flex-col gap-2">
+                                    <button onClick={() => { setVocabList(prev => prev.filter(w => w.id !== deleteTarget.id)); setDeleteTarget(null); }} className="w-full bg-red-500 text-white p-4 rounded-2xl font-bold shadow-lg shadow-red-100">Xóa ngay</button>
+                                    <button onClick={() => setDeleteTarget(null)} className="w-full bg-slate-100 text-slate-600 p-4 rounded-2xl font-bold">Quay lại</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL LUYỆN TẬP (MOBILE OPTIMIZED) */}
+                    {isReviewing && activeReviewQueue[currentWordIndex] && (
+                        <div className="fixed inset-0 bg-slate-900/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                            <div className={`bg-white w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl transition-all duration-300 ${shake ? 'animate-shake' : ''}`}>
+                                <div className={`p-8 text-center text-white relative transition-colors duration-500 ${hasChecked ? (isCorrectFeedback ? 'bg-emerald-500' : 'bg-red-500') : (isFreePractice ? 'bg-blue-500' : 'bg-amber-500')}`}>
+                                    <button onClick={() => { setIsReviewing(false); setIsFreePractice(false); }} className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-full"><Icon name="XCircle" size={24} /></button>
+                                    <div className="text-6xl mb-4">{hasChecked ? (isCorrectFeedback ? '✨' : '❌') : (isFreePractice ? '⚡' : '🥀')}</div>
+                                    <h2 className="text-3xl font-black leading-tight">{activeReviewQueue[currentWordIndex].term}</h2>
+                                    {activeReviewQueue[currentWordIndex].ipa && <p className="text-sm font-mono opacity-80 mt-1">/{activeReviewQueue[currentWordIndex].ipa}/</p>}
+                                    <div className="mt-6 w-full bg-black/10 h-1 rounded-full overflow-hidden">
+                                        <div className="bg-white h-full transition-all duration-500" style={{ width: `${((currentWordIndex + 1) / activeReviewQueue.length) * 100}%` }}></div>
+                                    </div>
+                                </div>
+                                <div className="p-6 md:p-8 flex flex-col items-center space-y-6 text-center">
+                                    {!hasChecked ? (
+                                        <div className="w-full space-y-4">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
+                                                {isCheckingWithAI ? <><Icon name="Loader2" size={14} className="animate-spin" /> Chờ AI...</> : <><Icon name="Zap" size={14} className="text-amber-500" /> Phân tích cục bộ...</>}
+                                            </p>
+                                            <input autoFocus type="text" disabled={isCheckingWithAI} value={userAnswer} onChange={e => setUserAnswer(e.target.value)} 
+                                                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl outline-none focus:border-blue-500 font-bold text-center text-2xl" placeholder="Nghĩa là gì?" />
+                                            <button onClick={checkAnswer} disabled={!userAnswer.trim() || isCheckingWithAI} 
+                                                className="w-full bg-slate-800 text-white p-5 rounded-3xl font-black text-lg shadow-xl active:scale-95 disabled:opacity-50 uppercase">Kiểm tra</button>
+                                        </div>
+                                    ) : (
+                                        <div className="w-full space-y-6">
+                                            <div><p className="text-[10px] font-black text-slate-300 uppercase italic mb-1">Kết quả chuẩn:</p><p className="text-2xl font-black text-slate-800 leading-tight">{activeReviewQueue[currentWordIndex].definition}</p></div>
+                                            <button onClick={handleNextReview} className={`w-full p-5 rounded-3xl font-black text-white shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all ${isCorrectFeedback ? 'bg-emerald-500' : 'bg-slate-800'}`}>Tiếp theo <Icon name="ChevronRight" size={20} /></button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL HỌC MỚI */}
+                    {isLearning && seedQueue[currentWordIndex] && (
+                        <div className="fixed inset-0 bg-slate-900/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                            <div className="bg-white w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl animate-in zoom-in-95">
+                                <div className="bg-emerald-500 p-8 text-center text-white relative">
+                                    <button onClick={() => setIsLearning(false)} className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-full"><Icon name="XCircle" size={24} /></button>
+                                    <div className="text-7xl mb-4">🌱</div>
+                                    <h2 className="text-3xl font-black uppercase">{seedQueue[currentWordIndex].term}</h2>
+                                    {seedQueue[currentWordIndex].ipa && <p className="text-sm font-mono opacity-80 mt-1">/{seedQueue[currentWordIndex].ipa}/</p>}
+                                </div>
+                                <div className="p-8 md:p-12 text-center space-y-8">
+                                    <div><p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Ghi nhớ ý nghĩa:</p><p className="text-3xl font-black text-slate-800">{seedQueue[currentWordIndex].definition}</p></div>
+                                    <button onClick={handleNextLearnWord} className="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black text-xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">Ghi nhớ <Icon name="ChevronRight" size={24} /></button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Navigation Bar chuẩn di động */}
+                    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md border border-white shadow-2xl rounded-full px-2 py-2 flex items-center gap-2 z-40">
+                        <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-6 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'dashboard' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'}`}>
+                            <Icon name="LayoutDashboard" size={18} strokeWidth={2.5} /> <span>Vườn</span>
+                        </button>
+                        <button onClick={() => setActiveTab('warehouse')} className={`flex items-center gap-2 px-6 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'warehouse' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'}`}>
+                            <Icon name="BookOpen" size={18} strokeWidth={2.5} /> <span>Kho</span>
+                        </button>
+                    </nav>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
