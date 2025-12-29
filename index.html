@@ -3,13 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Vocabulary Garden v5.7 - Cross-Platform Optimized</title>
+    <title>Vocabulary Garden v5.9 - AI & Custom Icon</title>
     
     <!-- Meta tags cho PWA (Web App) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#10b981">
     
+    <!-- KHAI BÁO BIỂU TƯỢNG (ICON) CHO ĐIỆN THOẠI -->
+    <!-- Lưu ý: Bạn cần một file ảnh tên icon.png (hình vuông, tối ưu là 192x192px) nằm cùng thư mục -->
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icon.png">
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -32,16 +38,15 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         
         body {
-            overscroll-behavior-y: contain; /* Chống kéo để load lại trang trên mobile */
-            -webkit-tap-highlight-color: transparent; /* Xóa màu xanh khi chạm trên iOS */
-            user-select: none; /* Tránh chọn văn bản nhầm khi bấm nút nhanh */
+            overscroll-behavior-y: contain;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
         
-        input { user-select: text; } /* Cho phép chọn văn bản trong ô nhập */
+        input { user-select: text; }
         
         .icon-container svg { display: block; }
         
-        /* Tối ưu hóa vùng an toàn (Safe Areas) cho điện thoại */
         @supports (padding: env(safe-area-inset-top)) {
             header { padding-top: calc(1rem + env(safe-area-inset-top)); }
             nav { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
@@ -51,7 +56,6 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Cải thiện hiển thị Heatmap trên màn hình cực nhỏ */
         .heatmap-container {
             mask-image: linear-gradient(to right, black 90%, transparent 100%);
             -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
@@ -64,7 +68,6 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
-        // Thành phần Icon ổn định cho CDN
         const Icon = ({ name, size = 24, className = "", strokeWidth = 2 }) => {
             const containerRef = useRef(null);
             useEffect(() => {
@@ -193,7 +196,6 @@
                 setPracticeHistory(prev => ({ ...prev, [todayStr]: (prev[todayStr] || 0) + 1 }));
             }, []);
 
-            // Xuất dữ liệu để chuyển sang thiết bị khác
             const exportData = () => {
                 const data = { vocabList, practiceHistory };
                 const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -204,7 +206,6 @@
                 a.click();
             };
 
-            // Nhập dữ liệu từ thiết bị khác
             const importData = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -225,24 +226,51 @@
                 return str.toLowerCase().trim().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g,"").replace(/\s{2,}/g," ").replace(/i/g, "y");
             };
 
-            const checkAnswerWithAI = async (userAns, correctAns, term) => {
-                const apiKey = ""; 
+            const checkAnswerWithAI = async (userAns, correctAns, term, retryCount = 0) => {
+                const apiKey = "AIzaSyDVDbiTo-Ja-RoBsOaW_T0wifqlAJabZng"; 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                const systemPrompt = `English Tutor. Term: "${term}". Sample: "${correctAns}". Check if user input is correct meaning. Accept synonyms/typos/iy variants. JSON: {"isCorrect": boolean}`;
+                
+                const systemPrompt = `Bạn là giáo viên tiếng Anh. Từ vựng là: "${term}". Nghĩa chuẩn: "${correctAns}". Người dùng nhập: "${userAns}". Kiểm tra xem nghĩa người dùng nhập có đúng hoặc tương đồng không. Trả về JSON: {"isCorrect": boolean}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: `Input: "${userAns}"` }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: { isCorrect: { type: "BOOLEAN" } }
+                        }
+                    }
+                };
+
                 try {
                     const response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: userAns }] }],
-                            systemInstruction: { parts: [{ text: systemPrompt }] },
-                            generationConfig: { responseMimeType: "application/json" }
-                        })
+                        body: JSON.stringify(payload)
                     });
+
+                    if (!response.ok) {
+                        if (retryCount < 5) {
+                            const waitTime = Math.pow(2, retryCount) * 1000;
+                            await new Promise(r => setTimeout(r, waitTime));
+                            return checkAnswerWithAI(userAns, correctAns, term, retryCount + 1);
+                        }
+                        return false;
+                    }
+
                     const result = await response.json();
-                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    return JSON.parse(text).isCorrect;
-                } catch (e) { return false; }
+                    const textResult = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    return textResult ? JSON.parse(textResult).isCorrect : false;
+                } catch (e) {
+                    if (retryCount < 5) {
+                        const waitTime = Math.pow(2, retryCount) * 1000;
+                        await new Promise(r => setTimeout(r, waitTime));
+                        return checkAnswerWithAI(userAns, correctAns, term, retryCount + 1);
+                    }
+                    return false;
+                }
             };
 
             const today = new Date().setHours(0, 0, 0, 0);
@@ -383,7 +411,6 @@
 
             return (
                 <div className="min-h-screen bg-slate-50 font-sans pb-24 flex flex-col overflow-x-hidden">
-                    {/* Header cố định */}
                     <header className="bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm px-6 py-4">
                         <div className="max-w-2xl mx-auto flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -454,7 +481,6 @@
                             </div>
                         ) : (
                             <div className="warehouse-container animate-in slide-in-from-bottom-4">
-                                {/* Form thêm mới */}
                                 <div className={`bg-white p-5 rounded-3xl shadow-sm border border-slate-100 transition-all ${shake ? 'animate-shake border-red-300 bg-red-50' : ''}`}>
                                     <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="PlusCircle" size={18} className="text-emerald-600" /> Thêm hạt mới</h3>
                                     <form onSubmit={addNewWord} className="space-y-4">
@@ -470,8 +496,7 @@
                                     </form>
                                 </div>
 
-                                {/* Quản lý danh sách */}
-                                <div className="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col min-h-[400px] max-h-[50vh] md:max-h-[600px]">
+                                <div className="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 mt-6 flex flex-col min-h-[400px]">
                                     <div className="flex-none">
                                         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="Search" size={18} className="text-emerald-600" /> Quản lý hạt giống</h3>
                                         <div className="flex gap-2 mb-4 overflow-x-auto pb-1 no-scrollbar">
@@ -506,7 +531,6 @@
                         )}
                     </main>
 
-                    {/* MODAL XÓA (MOBILE READY) */}
                     {deleteTarget && (
                         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-6 z-[100] backdrop-blur-sm animate-in fade-in duration-200">
                             <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl text-center space-y-6 animate-in zoom-in-95">
@@ -520,13 +544,14 @@
                         </div>
                     )}
 
-                    {/* MODAL LUYỆN TẬP (MOBILE OPTIMIZED) */}
                     {isReviewing && activeReviewQueue[currentWordIndex] && (
                         <div className="fixed inset-0 bg-slate-900/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
                             <div className={`bg-white w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl transition-all duration-300 ${shake ? 'animate-shake' : ''}`}>
                                 <div className={`p-8 text-center text-white relative transition-colors duration-500 ${hasChecked ? (isCorrectFeedback ? 'bg-emerald-500' : 'bg-red-500') : (isFreePractice ? 'bg-blue-500' : 'bg-amber-500')}`}>
                                     <button onClick={() => { setIsReviewing(false); setIsFreePractice(false); }} className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-full"><Icon name="XCircle" size={24} /></button>
-                                    <div className="text-6xl mb-4">{hasChecked ? (isCorrectFeedback ? '✨' : '❌') : (isFreePractice ? '⚡' : '🥀')}</div>
+                                    <div className="text-6xl mb-4">
+                                        {isCheckingWithAI ? '🧠' : (hasChecked ? (isCorrectFeedback ? '✨' : '❌') : (isFreePractice ? '⚡' : '🥀'))}
+                                    </div>
                                     <h2 className="text-3xl font-black leading-tight">{activeReviewQueue[currentWordIndex].term}</h2>
                                     {activeReviewQueue[currentWordIndex].ipa && <p className="text-sm font-mono opacity-80 mt-1">/{activeReviewQueue[currentWordIndex].ipa}/</p>}
                                     <div className="mt-6 w-full bg-black/10 h-1 rounded-full overflow-hidden">
@@ -537,7 +562,7 @@
                                     {!hasChecked ? (
                                         <div className="w-full space-y-4">
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
-                                                {isCheckingWithAI ? <><Icon name="Loader2" size={14} className="animate-spin" /> Chờ AI...</> : <><Icon name="Zap" size={14} className="text-amber-500" /> Phân tích cục bộ...</>}
+                                                {isCheckingWithAI ? <><Icon name="Loader2" size={14} className="animate-spin" /> Chờ AI thẩm định...</> : <><Icon name="Zap" size={14} className="text-amber-500" /> Nhập nghĩa tiếng Việt</>}
                                             </p>
                                             <input autoFocus type="text" disabled={isCheckingWithAI} value={userAnswer} onChange={e => setUserAnswer(e.target.value)} 
                                                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl outline-none focus:border-blue-500 font-bold text-center text-2xl" placeholder="Nghĩa là gì?" />
@@ -555,7 +580,6 @@
                         </div>
                     )}
 
-                    {/* MODAL HỌC MỚI */}
                     {isLearning && seedQueue[currentWordIndex] && (
                         <div className="fixed inset-0 bg-slate-900/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
                             <div className="bg-white w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl animate-in zoom-in-95">
@@ -573,7 +597,6 @@
                         </div>
                     )}
 
-                    {/* Navigation Bar chuẩn di động */}
                     <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md border border-white shadow-2xl rounded-full px-2 py-2 flex items-center gap-2 z-40">
                         <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-6 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'dashboard' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'}`}>
                             <Icon name="LayoutDashboard" size={18} strokeWidth={2.5} /> <span>Vườn</span>
