@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Vocabulary Garden v5.9 - AI & Custom Icon</title>
+    <title>Vocabulary Garden v6.4 - Keyboard Optimized</title>
     
     <!-- Meta tags cho PWA (Web App) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,7 +11,6 @@
     <meta name="theme-color" content="#10b981">
     
     <!-- KHAI BÁO BIỂU TƯỢNG (ICON) CHO ĐIỆN THOẠI -->
-    <!-- Lưu ý: Bạn cần một file ảnh tên icon.png (hình vuông, tối ưu là 192x192px) nằm cùng thư mục -->
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="icon.png">
@@ -41,10 +40,10 @@
             overscroll-behavior-y: contain;
             -webkit-tap-highlight-color: transparent;
             user-select: none;
+            background-color: #f8fafc;
         }
         
-        input { user-select: text; }
-        
+        input, textarea { user-select: text; }
         .icon-container svg { display: block; }
         
         @supports (padding: env(safe-area-inset-top)) {
@@ -62,7 +61,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900">
+<body class="text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -140,14 +139,20 @@
                     <div className="flex justify-center overflow-x-auto pb-2 no-scrollbar heatmap-container">
                         <div className="grid grid-flow-col grid-rows-7 gap-1">
                             {days.map((day, idx) => (
-                                <div key={idx} className={`w-3 h-3 md:w-4 md:h-4 rounded-sm heatmap-cell relative ${getColor(day.count)} transition-colors cursor-pointer`} title={`${day.date}: ${day.count} phiên`}></div>
+                                <div key={idx} className={`w-3.5 h-3.5 md:w-4 md:h-4 rounded-sm heatmap-cell relative ${getColor(day.count)} transition-colors cursor-pointer`} title={`${day.date}: ${day.count} phiên`}></div>
                             ))}
                         </div>
                     </div>
-                    <div className="mt-3 flex items-center justify-end gap-1 text-[9px] text-slate-400 font-bold uppercase">
-                        <span>Ít học</span>
-                        {[0, 1, 3, 5, 10].map(v => <div key={v} className={`w-2.5 h-2.5 rounded-sm ${getColor(v)}`}></div>)}
-                        <span>Chăm chỉ</span>
+                    <div className="mt-3 flex items-center justify-end gap-1 text-[10px] text-slate-400 font-bold">
+                        <span>Ít</span>
+                        <div className="flex gap-1 mx-1">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-slate-100"></div>
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-200"></div>
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-400"></div>
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-600"></div>
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-800"></div>
+                        </div>
+                        <span>Nhiều</span>
                     </div>
                 </div>
             );
@@ -167,9 +172,12 @@
             const [isCheckingWithAI, setIsCheckingWithAI] = useState(false);
             const [shake, setShake] = useState(false);
             
+            // Warehouse States
             const [newTerm, setNewTerm] = useState('');
             const [newIpa, setNewIpa] = useState('');
             const [newDef, setNewDef] = useState('');
+            const [addMode, setAddMode] = useState('single');
+            const [bulkInput, setBulkInput] = useState('');
             const [warehouseError, setWarehouseError] = useState('');
             const [searchTerm, setSearchTerm] = useState('');
             const [filterStatus, setFilterStatus] = useState('all');
@@ -178,6 +186,9 @@
             const termInputRef = useRef(null);
             const ipaInputRef = useRef(null);
             const defInputRef = useRef(null);
+
+            // API Key ĐỂ TRỐNG
+            const apiKey = "AIzaSyA0mM1q865MZ6zLPJI4-CqKZ2FUfJBaQW0"; 
 
             useEffect(() => {
                 const savedData = localStorage.getItem('vocab_garden_data');
@@ -227,32 +238,30 @@
             };
 
             const checkAnswerWithAI = async (userAns, correctAns, term, retryCount = 0) => {
-                const apiKey = "AIzaSyDVDbiTo-Ja-RoBsOaW_T0wifqlAJabZng"; 
+                if (!apiKey) return false;
+                
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                const systemPrompt = `Bạn là một giáo viên tiếng Anh thông thái. Từ vựng là: "${term}". Ý nghĩa chuẩn trong từ điển là: "${correctAns}". Người dùng đang học và nhập câu trả lời tiếng Việt là: "${userAns}". Nhiệm vụ của bạn là kiểm tra xem câu trả lời của người dùng có đúng hoặc đồng nghĩa với nghĩa chuẩn không. Hãy chấp nhận các từ đồng nghĩa, biến thể từ ngữ hoặc lỗi đánh máy nhỏ. CHỈ TRẢ VỀ JSON: {"isCorrect": boolean}`;
                 
-                const systemPrompt = `Bạn là giáo viên tiếng Anh. Từ vựng là: "${term}". Nghĩa chuẩn: "${correctAns}". Người dùng nhập: "${userAns}". Kiểm tra xem nghĩa người dùng nhập có đúng hoặc tương đồng không. Trả về JSON: {"isCorrect": boolean}`;
-                
-                const payload = {
-                    contents: [{ parts: [{ text: `Input: "${userAns}"` }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: { isCorrect: { type: "BOOLEAN" } }
-                        }
-                    }
-                };
-
                 try {
                     const response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `Input người dùng: "${userAns}"` }] }],
+                            systemInstruction: { parts: [{ text: systemPrompt }] },
+                            generationConfig: {
+                                responseMimeType: "application/json",
+                                responseSchema: {
+                                    type: "OBJECT",
+                                    properties: { isCorrect: { type: "BOOLEAN" } }
+                                }
+                            }
+                        })
                     });
 
                     if (!response.ok) {
-                        if (retryCount < 5) {
+                        if (retryCount < 3) {
                             const waitTime = Math.pow(2, retryCount) * 1000;
                             await new Promise(r => setTimeout(r, waitTime));
                             return checkAnswerWithAI(userAns, correctAns, term, retryCount + 1);
@@ -264,11 +273,6 @@
                     const textResult = result.candidates?.[0]?.content?.parts?.[0]?.text;
                     return textResult ? JSON.parse(textResult).isCorrect : false;
                 } catch (e) {
-                    if (retryCount < 5) {
-                        const waitTime = Math.pow(2, retryCount) * 1000;
-                        await new Promise(r => setTimeout(r, waitTime));
-                        return checkAnswerWithAI(userAns, correctAns, term, retryCount + 1);
-                    }
                     return false;
                 }
             };
@@ -296,14 +300,6 @@
                 return '🌱';
             };
 
-            const filteredWarehouse = useMemo(() => {
-                return vocabList.filter(word => {
-                    const matchesSearch = word.term.toLowerCase().includes(searchTerm.toLowerCase()) || word.definition.toLowerCase().includes(searchTerm.toLowerCase());
-                    const matchesFilter = filterStatus === 'all' || word.status === filterStatus;
-                    return matchesSearch && matchesFilter;
-                }).reverse();
-            }, [vocabList, searchTerm, filterStatus]);
-
             const addNewWord = (e) => {
                 e.preventDefault();
                 const term = newTerm.trim();
@@ -322,7 +318,70 @@
                 };
                 setVocabList(prev => [...prev, newWord]);
                 setNewTerm(''); setNewIpa(''); setNewDef('');
-                if (termInputRef.current) termInputRef.current.focus();
+                termInputRef.current?.focus();
+            };
+
+            const handleWarehouseKeyDown = (e, field) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    if (field === 'term') { 
+                        e.preventDefault(); 
+                        if (e.key === 'ArrowDown') defInputRef.current?.focus();
+                        else ipaInputRef.current?.focus(); 
+                    }
+                    else if (field === 'ipa') { e.preventDefault(); defInputRef.current?.focus(); }
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    if (field === 'ipa') { e.preventDefault(); termInputRef.current?.focus(); }
+                    else if (field === 'def') { 
+                        e.preventDefault(); 
+                        if (e.key === 'ArrowUp') termInputRef.current?.focus();
+                        else ipaInputRef.current?.focus();
+                    }
+                }
+            };
+
+            const handleBulkAdd = () => {
+                const lines = bulkInput.split('\n').filter(line => line.trim() !== '');
+                const addedWords = [];
+                let skipCount = 0;
+
+                lines.forEach(line => {
+                    const parts = line.split('\t'); 
+                    const term = parts[0]?.trim();
+                    const ipa = parts.length === 3 ? parts[1]?.trim() : '';
+                    const def = parts.length === 3 ? parts[2]?.trim() : parts[1]?.trim();
+
+                    if (term && def) {
+                        const isDuplicate = vocabList.some(w => w.term.toLowerCase() === term.toLowerCase()) || 
+                                           addedWords.some(w => w.term.toLowerCase() === term.toLowerCase());
+                        if (!isDuplicate) {
+                            addedWords.push({
+                                id: generateId(), term, ipa, definition: def,
+                                dateAdded: new Date().toISOString(), nextReviewDate: new Date().toISOString(),
+                                streak: 0, status: 'queue'
+                            });
+                        } else {
+                            skipCount++;
+                        }
+                    }
+                });
+
+                if (addedWords.length > 0) {
+                    setVocabList(prev => [...prev, ...addedWords]);
+                    setBulkInput('');
+                    setAddMode('single');
+                    alert(`Đã thêm thành công ${addedWords.length} từ. Bỏ qua ${skipCount} từ trùng lặp.`);
+                } else {
+                    alert('Không tìm thấy dữ liệu hợp lệ. Đảm bảo copy đúng 3 cột từ trang tính.');
+                }
+            };
+
+            const finishCheck = (isCorrect) => {
+                setIsCorrectFeedback(isCorrect);
+                setHasChecked(true);
+                setIsCheckingWithAI(false);
+                playFeedbackSound(isCorrect);
+                if (!isCorrect) setShake(true);
+                setTimeout(() => setShake(false), 500);
             };
 
             const checkAnswer = useCallback(async () => {
@@ -334,20 +393,21 @@
                 const correctList = currentWord.definition.split(/[,;]/).map(s => normalizeLocal(s));
 
                 if (correctList.some(correctNorm => userNorm === correctNorm)) {
-                    setIsCorrectFeedback(true);
-                    setHasChecked(true);
-                    playFeedbackSound(true);
+                    finishCheck(true);
                     return;
                 }
 
-                setIsCheckingWithAI(true);
-                const isCorrect = await checkAnswerWithAI(userAnswer, currentWord.definition, currentWord.term);
-                if (!isCorrect) { setShake(true); setTimeout(() => setShake(false), 500); }
-                setIsCorrectFeedback(isCorrect);
-                setHasChecked(true);
-                setIsCheckingWithAI(false);
-                playFeedbackSound(isCorrect);
-            }, [activeReviewQueue, currentWordIndex, userAnswer, isCheckingWithAI, hasChecked]);
+                if (apiKey) {
+                    setIsCheckingWithAI(true);
+                    const isCorrect = await checkAnswerWithAI(userAnswer, currentWord.definition, currentWord.term);
+                    finishCheck(isCorrect);
+                } else {
+                    setShake(true); setTimeout(() => setShake(false), 500);
+                    setIsCorrectFeedback(false);
+                    setHasChecked(true);
+                    playFeedbackSound(false);
+                }
+            }, [activeReviewQueue, currentWordIndex, userAnswer, isCheckingWithAI, hasChecked, apiKey]);
 
             const handleNextReview = useCallback(() => {
                 if (!hasChecked) return;
@@ -384,50 +444,54 @@
                 } else { setCurrentWordIndex(prev => prev + 1); }
             }, [currentWordIndex, seedQueue]);
 
-            const handleWarehouseKeyDown = (e, field) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-                    if (field === 'term' && ipaInputRef.current) { e.preventDefault(); ipaInputRef.current.focus(); }
-                    else if (field === 'ipa' && defInputRef.current) { e.preventDefault(); defInputRef.current.focus(); }
-                }
-                else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                    if (field === 'ipa' && termInputRef.current) { e.preventDefault(); termInputRef.current.focus(); }
-                    else if (field === 'def' && ipaInputRef.current) { e.preventDefault(); ipaInputRef.current.focus(); }
-                }
-            };
-
+            // Lắng nghe sự kiện Enter toàn cục để chuyển từ
             useEffect(() => {
-                const handleKeyDown = (e) => {
+                const handleGlobalKeyDown = (e) => {
                     if (e.key === 'Enter') {
                         if (isReviewing) {
                             e.preventDefault();
-                            if (!hasChecked) { if (!isCheckingWithAI && userAnswer.trim()) checkAnswer(); }
-                            else { handleNextReview(); }
-                        } else if (isLearning) { e.preventDefault(); handleNextLearnWord(); }
+                            if (!hasChecked) {
+                                if (userAnswer.trim() && !isCheckingWithAI) {
+                                    checkAnswer();
+                                }
+                            } else {
+                                handleNextReview();
+                            }
+                        } else if (isLearning) {
+                            e.preventDefault();
+                            handleNextLearnWord();
+                        }
                     }
                 };
-                window.addEventListener('keydown', handleKeyDown);
-                return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [isReviewing, hasChecked, isLearning, userAnswer, isCheckingWithAI, checkAnswer, handleNextReview, handleNextLearnWord]);
+                window.addEventListener('keydown', handleGlobalKeyDown);
+                return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+            }, [isReviewing, hasChecked, userAnswer, isCheckingWithAI, isLearning, checkAnswer, handleNextReview, handleNextLearnWord]);
+
+            const filteredWarehouse = useMemo(() => {
+                return vocabList.filter(word => {
+                    const matchesSearch = word.term.toLowerCase().includes(searchTerm.toLowerCase()) || word.definition.toLowerCase().includes(searchTerm.toLowerCase());
+                    const matchesFilter = filterStatus === 'all' || word.status === filterStatus;
+                    return matchesSearch && matchesFilter;
+                }).reverse();
+            }, [vocabList, searchTerm, filterStatus]);
 
             return (
-                <div className="min-h-screen bg-slate-50 font-sans pb-24 flex flex-col overflow-x-hidden">
-                    <header className="bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm px-6 py-4">
-                        <div className="max-w-2xl mx-auto flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-100">
-                                    <Icon name="Sprout" className="text-white w-6 h-6" strokeWidth={2.5} />
-                                </div>
-                                <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Vocabulary Garden</h1>
+                <div className="min-h-screen font-sans pb-24 flex flex-col overflow-x-hidden">
+                    <header className="bg-white border-b border-slate-100 sticky top-0 z-10 shadow-sm px-6 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-100">
+                                <Icon name="Sprout" className="text-white w-6 h-6" strokeWidth={2.5} />
                             </div>
-                            <div className="flex gap-2">
-                                <label className="cursor-pointer p-2 text-slate-400 hover:text-emerald-500" title="Nhập dữ liệu">
-                                    <Icon name="UploadCloud" size={20} />
-                                    <input type="file" className="hidden" accept=".json" onChange={importData} />
-                                </label>
-                                <button onClick={exportData} className="p-2 text-slate-400 hover:text-emerald-500" title="Sao lưu dữ liệu">
-                                    <Icon name="DownloadCloud" size={20} />
-                                </button>
-                            </div>
+                            <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase">Vocabulary Garden</h1>
+                        </div>
+                        <div className="flex gap-2">
+                            <label className="cursor-pointer p-2 text-slate-400 hover:text-emerald-500" title="Nhập dữ liệu">
+                                <Icon name="UploadCloud" size={20} />
+                                <input type="file" className="hidden" accept=".json" onChange={importData} />
+                            </label>
+                            <button onClick={exportData} className="p-2 text-slate-400 hover:text-emerald-500" title="Sao lưu dữ liệu">
+                                <Icon name="DownloadCloud" size={20} />
+                            </button>
                         </div>
                     </header>
 
@@ -436,11 +500,11 @@
                             <div className="space-y-6 animate-in fade-in duration-500">
                                 <ContributionGraph history={practiceHistory} />
 
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                                     {[{l:'Cần tưới', v:stats.reviewing, c:'amber-600'}, {l:'Chờ gieo', v:stats.seeds, c:'emerald-600'}, {l:'Đang lớn', v:stats.learning, c:'blue-600'}, {l:'Cổ thụ', v:stats.mastered, c:'indigo-600'}].map(s => (
-                                        <div key={s.l} className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                                            <p className="text-[10px] md:text-xs text-slate-500 uppercase font-bold mb-1">{s.l}</p>
-                                            <p className={`text-xl md:text-2xl font-black ${s.c}`}>{s.v}</p>
+                                        <div key={s.l} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
+                                            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">{s.l}</p>
+                                            <p className={`text-xl font-black ${s.c}`}>{s.v}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -461,9 +525,9 @@
                                         </button>
                                     </div>
                                     <button onClick={() => { setIsReviewing(true); setIsFreePractice(true); setCurrentWordIndex(0); setUserAnswer(''); setHasChecked(false); }} 
-                                        disabled={learningQueue.length === 0}
-                                        className={`w-full p-5 rounded-3xl flex items-center justify-center gap-3 transition-all ${learningQueue.length > 0 ? 'bg-blue-500 text-white shadow-md active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-                                        <Icon name="Zap" size={18} /> <span className="font-bold uppercase tracking-wide text-sm">Luyện tập tự do ({learningQueue.length})</span>
+                                        disabled={stats.learning === 0}
+                                        className={`w-full p-5 rounded-3xl flex items-center justify-center gap-3 transition-all ${stats.learning > 0 ? 'bg-blue-500 text-white shadow-md active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                                        <Icon name="Zap" size={18} /> <span className="font-bold uppercase tracking-wide text-sm">Luyện tập tự do ({stats.learning})</span>
                                     </button>
                                 </div>
 
@@ -482,18 +546,58 @@
                         ) : (
                             <div className="warehouse-container animate-in slide-in-from-bottom-4">
                                 <div className={`bg-white p-5 rounded-3xl shadow-sm border border-slate-100 transition-all ${shake ? 'animate-shake border-red-300 bg-red-50' : ''}`}>
-                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Icon name="PlusCircle" size={18} className="text-emerald-600" /> Thêm hạt mới</h3>
-                                    <form onSubmit={addNewWord} className="space-y-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                                <input ref={termInputRef} type="text" value={newTerm} onChange={e => {setNewTerm(e.target.value); setWarehouseError('');}} onKeyDown={e => handleWarehouseKeyDown(e, 'term')} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" placeholder="English..." />
-                                                {warehouseError && <p className="text-[10px] text-red-500 font-bold ml-2 italic">{warehouseError}</p>}
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Icon name="PlusCircle" size={18} className="text-emerald-600" /> Thêm hạt mới</h3>
+                                        <button onClick={() => setAddMode(addMode === 'single' ? 'bulk' : 'single')} className="text-xs bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full font-bold uppercase transition-colors">
+                                            {addMode === 'single' ? 'Dùng trang tính' : 'Nhập đơn lẻ'}
+                                        </button>
+                                    </div>
+                                    
+                                    {addMode === 'single' ? (
+                                        <form onSubmit={addNewWord} className="space-y-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <input 
+                                                        ref={termInputRef} 
+                                                        type="text" 
+                                                        value={newTerm} 
+                                                        onChange={e => {setNewTerm(e.target.value); setWarehouseError('');}} 
+                                                        onKeyDown={e => handleWarehouseKeyDown(e, 'term')}
+                                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" 
+                                                        placeholder="English..." 
+                                                    />
+                                                    {warehouseError && <p className="text-[10px] text-red-500 font-bold ml-2 italic">{warehouseError}</p>}
+                                                </div>
+                                                <input 
+                                                    ref={ipaInputRef} 
+                                                    type="text" 
+                                                    value={newIpa} 
+                                                    onChange={e => setNewIpa(e.target.value)} 
+                                                    onKeyDown={e => handleWarehouseKeyDown(e, 'ipa')}
+                                                    className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-emerald-600 text-sm" 
+                                                    placeholder="IPA..." 
+                                                />
                                             </div>
-                                            <input ref={ipaInputRef} type="text" value={newIpa} onChange={e => setNewIpa(e.target.value)} onKeyDown={e => handleWarehouseKeyDown(e, 'ipa')} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-emerald-600 text-sm" placeholder="IPA..." />
+                                            <input 
+                                                ref={defInputRef} 
+                                                type="text" 
+                                                value={newDef} 
+                                                onChange={e => setNewDef(e.target.value)} 
+                                                onKeyDown={e => handleWarehouseKeyDown(e, 'def')}
+                                                className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" 
+                                                placeholder="Vietnamese meaning..." 
+                                            />
+                                            <button type="submit" className="w-full bg-slate-800 text-white p-5 rounded-2xl font-bold active:scale-95 transition-all shadow-lg hover:bg-black uppercase tracking-wide text-sm">Lưu vào kho</button>
+                                        </form>
+                                    ) : (
+                                        <div className="space-y-4 animate-in fade-in duration-300">
+                                            <p className="text-[11px] text-slate-400 italic bg-slate-50 p-3 rounded-xl border border-dashed">
+                                                Copy 3 cột (Tiếng Anh, IPA, Nghĩa) từ Excel/Sheets dán vào đây.
+                                            </p>
+                                            <textarea value={bulkInput} onChange={e => setBulkInput(e.target.value)} rows="6" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-medium text-sm border border-slate-200 focus:ring-2 focus:ring-emerald-500" placeholder="English&#9;IPA&#9;Vietnamese..."></textarea>
+                                            <button onClick={handleBulkAdd} className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold uppercase shadow-md active:scale-95 transition-all">Xác nhận nhập hàng loạt</button>
                                         </div>
-                                        <input ref={defInputRef} type="text" value={newDef} onChange={e => setNewDef(e.target.value)} onKeyDown={e => handleWarehouseKeyDown(e, 'def')} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold" placeholder="Vietnamese meaning..." />
-                                        <button type="submit" className="w-full bg-slate-800 text-white p-5 rounded-2xl font-bold active:scale-95 transition-all shadow-lg hover:bg-black uppercase tracking-wide text-sm">Lưu vào kho</button>
-                                    </form>
+                                    )}
                                 </div>
 
                                 <div className="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-slate-100 mt-6 flex flex-col min-h-[400px]">
@@ -516,13 +620,12 @@
                                                     <span className="text-xl">{getPlantIcon(word)}</span>
                                                     <div>
                                                         <div className="flex items-center gap-2">
-                                                            <p className="font-bold text-sm">{word.term}</p>
-                                                            {word.ipa && <p className="text-[10px] text-emerald-500 font-mono italic">/{word.ipa}/</p>}
+                                                            <p className="font-bold text-sm text-slate-800">{word.term} {word.ipa && <span className="text-[10px] font-normal text-emerald-500 italic">/{word.ipa}/</span>}</p>
+                                                            <p className="text-[10px] text-slate-500 font-medium">{word.definition}</p>
                                                         </div>
-                                                        <p className="text-[10px] text-slate-500 font-medium truncate max-w-[150px] md:max-w-[300px]">{word.definition}</p>
                                                     </div>
                                                 </div>
-                                                <button onClick={() => setDeleteTarget(word)} className="p-2.5 text-slate-300 active:text-red-500 bg-white rounded-xl shadow-sm border border-slate-100"><Icon name="Trash2" size={16} /></button>
+                                                <button onClick={() => setVocabList(vocabList.filter(x => x.id !== word.id))} className="p-2.5 text-slate-300 hover:text-red-500 transition-colors"><Icon name="Trash2" size={16} /></button>
                                             </div>
                                         ))}
                                     </div>
@@ -545,7 +648,7 @@
                     )}
 
                     {isReviewing && activeReviewQueue[currentWordIndex] && (
-                        <div className="fixed inset-0 bg-slate-900/90 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                        <div className="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                             <div className={`bg-white w-full max-w-md rounded-[40px] overflow-hidden shadow-2xl transition-all duration-300 ${shake ? 'animate-shake' : ''}`}>
                                 <div className={`p-8 text-center text-white relative transition-colors duration-500 ${hasChecked ? (isCorrectFeedback ? 'bg-emerald-500' : 'bg-red-500') : (isFreePractice ? 'bg-blue-500' : 'bg-amber-500')}`}>
                                     <button onClick={() => { setIsReviewing(false); setIsFreePractice(false); }} className="absolute top-6 right-6 p-2 hover:bg-white/20 rounded-full"><Icon name="XCircle" size={24} /></button>
@@ -564,15 +667,15 @@
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
                                                 {isCheckingWithAI ? <><Icon name="Loader2" size={14} className="animate-spin" /> Chờ AI thẩm định...</> : <><Icon name="Zap" size={14} className="text-amber-500" /> Nhập nghĩa tiếng Việt</>}
                                             </p>
-                                            <input autoFocus type="text" disabled={isCheckingWithAI} value={userAnswer} onChange={e => setUserAnswer(e.target.value)} 
-                                                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl outline-none focus:border-blue-500 font-bold text-center text-2xl" placeholder="Nghĩa là gì?" />
+                                            <input autoFocus type="text" disabled={isCheckingWithAI} value={userAnswer} onChange={e => setUserAnswer(e.target.value)}
+                                                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl outline-none focus:border-emerald-500 font-bold text-center text-2xl" placeholder="Nghĩa là gì?" />
                                             <button onClick={checkAnswer} disabled={!userAnswer.trim() || isCheckingWithAI} 
                                                 className="w-full bg-slate-800 text-white p-5 rounded-3xl font-black text-lg shadow-xl active:scale-95 disabled:opacity-50 uppercase">Kiểm tra</button>
                                         </div>
                                     ) : (
-                                        <div className="w-full space-y-6">
+                                        <div className="w-full space-y-6 animate-in slide-in-from-bottom-2">
                                             <div><p className="text-[10px] font-black text-slate-300 uppercase italic mb-1">Kết quả chuẩn:</p><p className="text-2xl font-black text-slate-800 leading-tight">{activeReviewQueue[currentWordIndex].definition}</p></div>
-                                            <button onClick={handleNextReview} className={`w-full p-5 rounded-3xl font-black text-white shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all ${isCorrectFeedback ? 'bg-emerald-500' : 'bg-slate-800'}`}>Tiếp theo <Icon name="ChevronRight" size={20} /></button>
+                                            <button onClick={handleNextReview} className="w-full p-5 rounded-3xl font-black text-white shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all bg-emerald-500">Tiếp theo (Enter) <Icon name="ChevronRight" size={20} /></button>
                                         </div>
                                     )}
                                 </div>
@@ -591,18 +694,18 @@
                                 </div>
                                 <div className="p-8 md:p-12 text-center space-y-8">
                                     <div><p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Ghi nhớ ý nghĩa:</p><p className="text-3xl font-black text-slate-800">{seedQueue[currentWordIndex].definition}</p></div>
-                                    <button onClick={handleNextLearnWord} className="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black text-xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">Ghi nhớ <Icon name="ChevronRight" size={24} /></button>
+                                    <button onClick={handleNextLearnWord} className="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black text-xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">Ghi nhớ (Enter) <Icon name="ChevronRight" size={24} /></button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md border border-white shadow-2xl rounded-full px-2 py-2 flex items-center gap-2 z-40">
-                        <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-6 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'dashboard' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'}`}>
-                            <Icon name="LayoutDashboard" size={18} strokeWidth={2.5} /> <span>Vườn</span>
+                    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md border shadow-2xl rounded-full px-2 py-2 flex items-center gap-2 z-40">
+                        <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-8 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'dashboard' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:text-emerald-500'}`}>
+                            <Icon name="LayoutDashboard" size={18} /> <span>Vườn</span>
                         </button>
-                        <button onClick={() => setActiveTab('warehouse')} className={`flex items-center gap-2 px-6 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'warehouse' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'text-slate-400'}`}>
-                            <Icon name="BookOpen" size={18} strokeWidth={2.5} /> <span>Kho</span>
+                        <button onClick={() => setActiveTab('warehouse')} className={`flex items-center gap-2 px-8 py-4 rounded-full transition-all font-bold text-sm ${activeTab === 'warehouse' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:text-emerald-500'}`}>
+                            <Icon name="BookOpen" size={18} /> <span>Kho</span>
                         </button>
                     </nav>
                 </div>
